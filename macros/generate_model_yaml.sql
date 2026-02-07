@@ -99,11 +99,15 @@
             {% do model_yaml.append('  - name: ' ~ model | lower) %}
             {% do model_yaml.append('    description: ""') %}
 
-            {# 🔐 View, table, and incremental materializations get contract enforcement config #}
-            {% if materialized | lower is in ['table', 'view', 'incremental'] %}
+            {# 🔐 Table and incremental materializations get contract enforcement config and View gets set to false, but still shows the config #}
+            {% if (materialized | lower) == 'table' or (materialized | lower) == 'incremental' %}
                 {{ model_yaml.append('    config:') }}
                 {{ model_yaml.append('        contract:') }}
                 {{ model_yaml.append('            enforced: true') }}
+            {% elif (materialized | lower) == 'view' %}
+                {{ model_yaml.append('    config:') }}
+                {{ model_yaml.append('        contract:') }}
+                {{ model_yaml.append('            enforced: false') }}
             {% endif %}
             {% do model_yaml.append('    columns:') %}
 
