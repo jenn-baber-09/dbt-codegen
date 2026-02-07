@@ -141,7 +141,7 @@
     {% do log("   ✅ All models processed | joining YAML...", info=true) %}
 
     {# 📤 Join YAML lines and output #}
-    {% set joined = model_yaml | join (char(10)) %}
+    {% set joined = model_yaml | join ('') %}
     {{ print(joined) }}
     
     {# 🔧 Debug: Return final output #}
