@@ -4,12 +4,12 @@
   
   Args: column, model_yaml, column_desc_dict, include_data_types, parent_column_name
 #}
-{% macro generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types, parent_column_name="") %}
-  {{ return(adapter.dispatch('generate_column_yaml', 'codegen')(column, model_yaml, column_desc_dict, include_data_types, parent_column_name)) }}
+{% macro generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types, parent_column_name="", materialized=None) %}
+  {{ return(adapter.dispatch('generate_column_yaml', 'codegen')(column, model_yaml, column_desc_dict, include_data_types, parent_column_name, materialized)) }}
 {% endmacro %}
 
 {# ⚙️ Default implementation for all adapters #}
-{% macro default__generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types, parent_column_name) %}
+{% macro default__generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types, parent_column_name, materialized) %}
     {# 🏗️ Build full column name (parent.child for nested fields) #}
     {% if parent_column_name %}
         {% set column_name = parent_column_name ~ "." ~ column.name %}
