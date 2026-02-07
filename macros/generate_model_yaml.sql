@@ -101,13 +101,13 @@
 
             {# 🔐 Table and incremental materializations get contract enforcement config and View gets set to false, but still shows the config #}
             {% if (materialized | lower) == 'table' or (materialized | lower) == 'incremental' %}
-                {{ model_yaml.append('    config:') }}
-                {{ model_yaml.append('        contract:') }}
-                {{ model_yaml.append('            enforced: true') }}
+                {{ do model_yaml.append('    config:') }}
+                {{ do model_yaml.append('        contract:') }}
+                {{ do model_yaml.append('            enforced: true') }}
             {% elif (materialized | lower) == 'view' %}
-                {{ model_yaml.append('    config:') }}
-                {{ model_yaml.append('        contract:') }}
-                {{ model_yaml.append('            enforced: false') }}
+                {{ do model_yaml.append('    config:') }}
+                {{ do model_yaml.append('        contract:') }}
+                {{ do model_yaml.append('            enforced: false') }}
             {% endif %}
             {% do model_yaml.append('    columns:') %}
 
