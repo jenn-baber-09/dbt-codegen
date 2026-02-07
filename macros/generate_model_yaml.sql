@@ -47,7 +47,7 @@
     {# 🔄 Recursively process nested struct fields #}
     {% if column.fields|length > 0 %}
         {% for child_column in column.fields %}
-            {% set model_yaml = codegen.generate_column_yaml(child_column, model_yaml, column_desc_dict, include_data_types, parent_column_name=column_name) %}
+            {% set model_yaml = codegen.generate_column_yaml(child_column, model_yaml, column_desc_dict, include_data_types, parent_column_name=column_name, materialized=materialized) %}
         {% endfor %}
     {% endif %}
     
@@ -121,7 +121,7 @@
 
             {# 🔄 Loop: Generate YAML for each column #}
             {% for column in columns %}
-                {% set model_yaml = codegen.generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types) %}
+                {% set model_yaml = codegen.generate_column_yaml(column, model_yaml, column_desc_dict, include_data_types, materialized=materialized) %}
             {% endfor %}
             
             {# 🔧 Debug: Model complete #}
