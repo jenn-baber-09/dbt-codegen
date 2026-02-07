@@ -1,9 +1,23 @@
+{#
+  📚 generate_model_import_ctes
+  Creates CTEs for model dependencies (refs, sources, vars, tables)
+  
+  Args: model_name, leading_commas
+#}
+
 {% macro generate_model_import_ctes(model_name, leading_commas = False) %}
     {{ return(adapter.dispatch('generate_model_import_ctes', 'codegen')(model_name, leading_commas)) }}
 {% endmacro %}
 
+{# ⚙️ Default implementation for all adapters #}
 {% macro default__generate_model_import_ctes(model_name, leading_commas) %}
 
+    {# 🔧 Debug: Log inputs #}
+    {%- if execute -%}
+        {% do log("🚀 [IMPORT_CTES] Generating CTEs for model: " ~ model_name, info=true) %}
+    {%- endif -%}
+    
+    {# 📍 Retrieve model from graph #}
     {%- if execute -%}
     {%- set nodes = graph.nodes.values() -%}
 
@@ -13,52 +27,27 @@
         | list).pop() -%}
 
     {%- set model_raw_sql = model.raw_sql or model.raw_code -%}
+    
+    {# 🔧 Debug: Model found #}
+    {% do log("   ✓ Model found in graph", info=true) %}
     {%- else -%}
     {%- set model_raw_sql = '' -%}
     {%- endif -%}
 
-    {#-
-
-        REGEX Explanations
-
-        # with_regex
-        - matches (start of file followed by anything then whitespace
-        or whitespace
-        or a comma) followed by the word with then a space   
-
-        # from_ref 
-        - matches (from or join) followed by some spaces and then {{ref(<something>)}}
-
-        # from_source 
-        - matches (from or join) followed by some spaces and then {{source(<something>,<something_else>)}}
-
-        # from_var_1
-        - matches (from or join) followed by some spaces and then {{var(<something>)}}
-
-        # from_var_2
-        - matches (from or join) followed by some spaces and then {{var(<something>,<something_else>)}}
-
-        # from_table_1
-        - matches (from or join) followed by some spaces and then <something>.<something_else>
-          where each <something> is enclosed by (` or [ or " or ' or nothing)
-
-        # from_table_2
-        - matches (from or join) followed by some spaces and then <something>.<something_else>.<something_different>
-          where each <something> is enclosed by (` or [ or " or ' or nothing)
-
-        # from_table_3
-        - matches (from or join) followed by some spaces and then <something>
-          where <something> is enclosed by (` or [ or " or ')
-
-        # config block
-        - matches the start of the file followed by anything and then {{config(<something>)}}
-
-    -#}
+    {# 🔍 Regex patterns to find dependencies in SQL #}
+    {# Each pattern captures: ref(), source(), var(), or direct table references #}
 
     {%- set re = modules.re -%}
 
+    {# 🏷️ Pattern: Match CTE keyword (with) #}
     {%- set with_regex = '(?i)(?s)(^.*\s*|\s+|,)with\s' -%}
     {%- set does_raw_sql_contain_cte = re.search(with_regex, model_raw_sql) -%}
+    
+    {# 🔧 Debug: Check for existing CTEs #}
+    {%- if execute %}
+        {% do log("   ✓ Scanning for dependencies in model SQL...", info=true) %}
+        {% do log("      Model has existing CTEs: " ~ (does_raw_sql_contain_cte is not none), info=true) %}
+    {%- endif %}
 
     {%- set from_regexes = {
         'from_ref':
@@ -304,12 +293,23 @@
     {%- set config_list = [] -%}
     {%- set ns = namespace(model_sql = model_raw_sql) -%}
 
+    {# 🔄 Loop: Process each regex pattern #}
+    {%- if execute %}
+        {% do log("   🔄 Processing regex patterns...", info=true) %}
+    {%- endif %}
+
     {%- for regex_name, regex_pattern in from_regexes.items() -%}
 
         {%- set all_regex_matches = re.findall(regex_pattern, model_raw_sql) -%}
+        
+        {# 🔧 Debug: Log matches for each pattern #}
+        {%- if execute and all_regex_matches|length > 0 %}
+            {% do log("      ✓ " ~ regex_name ~ ": found " ~ all_regex_matches|length ~ " match(es)", info=true) %}
+        {%- endif %}
 
         {%- for match in all_regex_matches -%}
 
+            {# 📝 Process match and build CTE reference #}
             {%- if regex_name == 'config_block' -%}
                 {%- set match_tuple = (match|trim, regex_name) -%}
                 {%- do config_list.append(match_tuple) -%}
@@ -317,7 +317,7 @@
                 {%- set full_from_clause = match[1:]|join|trim -%}
                 {%- set cte_name = 'source_' + match[6]|lower -%}
                 {%- set match_tuple = (cte_name, full_from_clause, regex_name) -%}
-                {%- do from_list.append(match_tuple) -%} 
+                {%- do from_list.append(match_tuple) -%}
             {%- elif regex_name == 'from_table_1' -%}
                 {%- set full_from_clause = match[1:]|join()|trim -%}
                 {%- set cte_name = match[2]|lower + '_' + match[6]|lower -%}
@@ -337,6 +337,7 @@
 
         {%- endfor -%}
 
+        {# 🔄 Replace references with CTE names in SQL #}
         {%- if regex_name == 'config_block' -%}
         {%- elif regex_name == 'from_source' -%}
             {%- set ns.model_sql = re.sub(regex_pattern, '\g<1> source_\g<7>', ns.model_sql) -%}            
@@ -350,55 +351,69 @@
 
     {%- endfor -%}
 
+{# 📋 Build CTE definitions if dependencies found #}
 {%- if from_list|length > 0 -%}
+    
+    {# 🔧 Debug: Dependencies found #}
+    {%- if execute %}
+        {% do log("   ✅ Found " ~ from_list|unique|length ~ " unique dependencies", info=true) %}
+        {% do log("   🔨 Building CTE structure...", info=true) %}
+    {%- endif %}
 
 {%- set model_import_ctes -%}
 
     {%- for config_obj in config_list -%}
 
+    {# Remove config block from original SQL #}
     {%- set ns.model_sql = ns.model_sql|replace(config_obj[0], '') -%}
 
 {{ config_obj[0] }}
 
 {% endfor -%}
 
+    {# 🔁 Loop: Generate CTE for each dependency #}
     {%- for from_obj in from_list|unique|sort -%}
 
 {%- if loop.first -%}with {% else -%}{%- if leading_commas -%},{%- endif -%}{%- endif -%}{{ from_obj[0] }} as (
 
     select * from {{ from_obj[1] }}
     {%- if from_obj[2] == 'from_source' and from_list|length > 1 %} 
-    -- CAUTION: It's best practice to create staging layer for raw sources
+    -- ⚠️ Create staging layer for raw sources
     {%- elif from_obj[2] == 'from_table_1' or from_obj[2] == 'from_table_2' or from_obj[2] == 'from_table_3' %}
-    -- CAUTION: It's best practice to use the ref or source function instead of a direct reference
+    -- ⚠️ Use ref() or source() instead of direct table ref
     {%- elif from_obj[2] == 'from_var_1' or from_obj[2] == 'from_var_2' %}
-    -- CAUTION: It's best practice to use the ref or source function instead of a var
+    -- ⚠️ Use ref() or source() instead of var()
     {%- endif %}
   
 ){%- if ((loop.last and does_raw_sql_contain_cte) or (not loop.last)) and not leading_commas -%},{%- endif %}
 
 {% endfor -%}
 
-{%- if does_raw_sql_contain_cte -%}
-    {%- if leading_commas -%}
-        {%- set replace_with = '\g<1>,' -%}
-    {%- else -%}
-        {%- set replace_with = '\g<1>' -%}
-    {%- endif -%}
+    {# ✅ Add original model SQL with CTE included #}
+    {%- if does_raw_sql_contain_cte -%}
+        {%- if leading_commas -%}
+            {%- set replace_with = '\g<1>,' -%}
+        {%- else -%}
+            {%- set replace_with = '\g<1>' -%}
+        {%- endif -%}
 {{ re.sub(with_regex, replace_with, ns.model_sql, 1)|trim }}
-{%- else -%}
+    {%- else -%}
 {{ ns.model_sql|trim }}
-{%- endif -%}
+    {%- endif -%}
 
 {%- endset -%}
 
 {%- else -%}
 
+{# 📊 No dependencies found - return original SQL #}
 {% set model_import_ctes = model_raw_sql %}
 
 {%- endif -%}
 
+{# 🏃 Output final result #}
 {%- if execute -%}
+    {# 🔧 Debug: Done #}
+    {% do log("   ✅ CTE generation complete | returning SQL", info=true) %}
 
 {{ print(model_import_ctes) }}
 {% do return(model_import_ctes) %}
