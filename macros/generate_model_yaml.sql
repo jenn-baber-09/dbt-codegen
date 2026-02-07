@@ -25,8 +25,23 @@
         {% do model_yaml.append('        data_type: ' ~ codegen.data_type_format_model(column)) %}
     {% endif %}
     
+    
     {# 📄 Add column description from upstream or empty #}
     {% do model_yaml.append('        description: ' ~ (column_desc_dict.get(column.name | lower,'') | tojson)) %}
+
+    {# 🧪 Add generic boolean tests to fill in based on datatype #}
+    {% if codegen.data_type_format_model(column) | lower == 'boolean' %}
+        {% do model_yaml.append('        data_tests:') %}
+        {% do model_yaml.append('          - not_null') %}
+        {% do model_yaml.append('          - accepted_values:') %}
+        {% do model_yaml.append('              config:') %}
+        {% do model_yaml.append('                  arguments:') %}
+        {% do model_yaml.append('                      values: [true, false]') %}
+        {% do model_yaml.append('                      quote: false') %}
+    {% endif %}
+
+    
+
     {% do model_yaml.append('') %}
 
     {# 🔄 Recursively process nested struct fields #}
@@ -45,14 +60,14 @@
   Main macro that orchestrates YAML generation for one or more dbt models
   Includes column descriptions, data types, and nested struct support
   
-  Args: model_names (list), upstream_descriptions (bool), include_data_types (bool)
+  Args: model_names (list), upstream_descriptions (bool), include_data_types (bool), materialized (string)
 #}
-{% macro generate_model_yaml(model_names=[], upstream_descriptions=False, include_data_types=True) -%}
-  {{ return(adapter.dispatch('generate_model_yaml', 'codegen')(model_names, upstream_descriptions, include_data_types)) }}
+{% macro generate_model_yaml(model_names=[], upstream_descriptions=False, include_data_types=True, materialized=None) -%}
+  {{ return(adapter.dispatch('generate_model_yaml', 'codegen')(model_names, upstream_descriptions, include_data_types, materialized)) }}
 {%- endmacro %}
 
 {# ⚙️ Default implementation for all adapters #}
-{% macro default__generate_model_yaml(model_names, upstream_descriptions, include_data_types) %}
+{% macro default__generate_model_yaml(model_names, upstream_descriptions, include_data_types, materialized) %}
 
     {# 🔧 Debug: Log macro inputs #}
     {%- if execute %}
@@ -80,9 +95,16 @@
                 {% do log("   ⏳ Processing model: " ~ model, info=true) %}
             {%- endif %}
             
-            {# 📝 Add model header to YAML #}
+            {# 📝 Add model header to YAML #}            
             {% do model_yaml.append('  - name: ' ~ model | lower) %}
             {% do model_yaml.append('    description: ""') %}
+
+            {# 🔐 View, table, and incremental materializations get contract enforcement config #}
+            {% if materialized | lower is in ['table', 'view', 'incremental'] %}
+                {{ model_yaml.append('    config:') }}
+                {{ model_yaml.append('        contract:') }}
+                {{ model_yaml.append('            enforced: true') }}
+            {% endif %}
             {% do model_yaml.append('    columns:') %}
 
             {# 📍 Get model relation and columns #}
